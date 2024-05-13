@@ -36,7 +36,6 @@ import org.apache.flink.util.Collector;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.time.temporal.ChronoUnit;
 
 /**
  * The "Long Ride Alerts" exercise.
@@ -101,7 +100,7 @@ public class LongRidesExercise {
     @VisibleForTesting
     public static class AlertFunction extends KeyedProcessFunction<Long, TaxiRide, Long> {
 
-        private ValueState<TaxiRide> taxiRideState;
+        private transient ValueState<TaxiRide> taxiRideState;
 
         @Override
         public void open(Configuration config) throws Exception {
@@ -117,13 +116,13 @@ public class LongRidesExercise {
                 }
             } else {
                 if (ride.isStart) {
-                    if(Duration.between(ride.eventTime, taxiRideState.value().eventTime).toHours() >= 2)
+                    if(rideTooLong(ride, taxiRideState.value()))
                     {
                         out.collect(ride.rideId);
                     }
                 } else{
                     context.timerService().deleteEventTimeTimer(taxiRideState.value().eventTime.plusSeconds(120 * 60).toEpochMilli());
-                    if(Duration.between(taxiRideState.value().eventTime, ride.eventTime).toHours() >= 2)
+                    if(rideTooLong(taxiRideState.value(), ride))
                     {
                         out.collect(ride.rideId);
                     }
@@ -137,6 +136,10 @@ public class LongRidesExercise {
         public void onTimer(long timestamp, OnTimerContext context, Collector<Long> out) throws Exception {
             out.collect(taxiRideState.value().rideId);
             taxiRideState.clear();
+        }
+
+        private boolean rideTooLong(TaxiRide startEvent, TaxiRide endEvent) {
+            return Duration.between(startEvent.eventTime, endEvent.eventTime).toHours() >= 2;
         }
     }
 }
